@@ -37,6 +37,8 @@ ALLOWED_HOSTS = ["*"]
 
 AUTH_USER_MODEL = 'api.User'
 
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -60,13 +62,13 @@ SIMPLE_JWT = {
 # Application definition
 
 INSTALLED_APPS = [
+    "api",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    "api",
     'rest_framework',
     "corsheaders",
 ]

@@ -1,7 +1,9 @@
 from django.db import models
 from django.utils.timezone import now
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import calendar
+
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -100,11 +102,34 @@ class RoleTransition(models.Model):
 
 # === PARTNERS ===
 class Partner(models.Model):
+    STATUS_CHOICES = [
+        ("contacted", "Contacted"),
+        ("not_contacted", "Not Contacted"),
+        ("closed", "Closed"),
+        ("follow_up", "Follow-Up"),
+        ("alan_to_follow", "Alan to Follow Up"),
+    ]
+
+    CATEGORY_CHOICES = [
+        ("pre_university", "Pre-University Internships"),
+        ("summer_internships", "Summer Internships"),
+        ("full_time", "Full-Time Job Placements"),
+        ("fundraising", "Fundraising Dinner"),
+        ("exploratory", "Exploratory"),
+    ]
+
+    LEAD_TYPE_CHOICES = [
+        ("cold", "Cold"),
+        ("warm", "Warm"),
+        ("hot", "Hot"),
+    ]
+
     partner_id = models.AutoField(primary_key=True)
     partner_name = models.CharField(max_length=255)
     relationship_owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    category = models.CharField(max_length=255, blank=True, null=True)
-    lead_type = models.CharField(max_length=255, blank=True, null=True)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, blank=True, null=True)
+    lead_type = models.CharField(max_length=50, choices=LEAD_TYPE_CHOICES, blank=True, null=True)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="not_contacted")
     last_outreach_date = models.DateField(blank=True, null=True)
     contact_person = models.CharField(max_length=255, blank=True, null=True)
     position = models.CharField(max_length=255, blank=True, null=True)
@@ -136,27 +161,64 @@ class PartnerInteraction(models.Model):
 
 # === JOB & INTERNSHIPS ===
 class JobInternship(models.Model):
+    TYPE_CHOICES = [
+        ("Internship", "Internship"),
+        ("Job", "Job"),
+    ]
+
     internship_id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=255)
     description = models.TextField()
-    deadline = models.DateField()
-    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     company = models.CharField(max_length=255)
     location = models.CharField(max_length=255)
+    job_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="Internship")
+    deadline = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        """Check if the internship deadline has passed."""
+        return self.deadline < now().date()
 
     def __str__(self):
-        return self.title
+        return f"{self.title} - {self.company}"
+
+
+# === TRACKING ASSIGNMENTS (REPLACES M2M FIELD) ===
+class JobInternshipAssignedTo(models.Model):
+    """Tracks which users are assigned to internships."""
+    jobinternship = models.ForeignKey(JobInternship, on_delete=models.CASCADE)
+    user = models.ForeignKey("User", on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("jobinternship", "user")  # Prevent duplicate assignments
+
+    def __str__(self):
+        return f"{self.user.first_name} assigned to {self.jobinternship.title}"
 
 
 # === TRACKING STUDENT APPLICATIONS ===
-class StudentOpportunity(models.Model):
-    student = models.ForeignKey(User, on_delete=models.CASCADE)
-    opportunity = models.ForeignKey(JobInternship, on_delete=models.CASCADE)
+class InternshipApplication(models.Model):
+    STATUS_CHOICES = [
+        ("Applied", "Applied"),
+        ("Under Review", "Under Review"),
+        ("Interview", "Interview"),
+        ("Accepted", "Accepted"),
+        ("Rejected", "Rejected"),
+    ]
+
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name="applications")
+    internship = models.ForeignKey(JobInternship, on_delete=models.CASCADE, related_name="applications")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Applied")
     applied_on = models.DateTimeField(auto_now_add=True)
+    resume_link = models.URLField(blank=True, null=True)
+    resume_file = models.FileField(upload_to="resumes/", blank=True, null=True)
+    cover_letter = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("student", "internship")  # Prevent duplicate applications
 
     def __str__(self):
-        return f"{self.student.first_name} applied for {self.opportunity.title}"
-
+        return f"{self.student.first_name} - {self.internship.title} ({self.status})"
 
 # === EVENTS CALENDAR ===
 class EventCalendar(models.Model):

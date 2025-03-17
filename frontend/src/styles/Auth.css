@@ -31,6 +31,18 @@
   width: 300%; /* Adjust based on number of images */
   transition: transform 0.7s ease-in-out;
 }
+.close-btn {
+  position: absolute;
+  top: 215px;
+  right: 530px;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+.close-btn:hover {
+  color: red;
+}
 
 /* Individual slides */
 .auth-slide {
