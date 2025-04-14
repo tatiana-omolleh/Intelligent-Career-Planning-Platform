@@ -14,6 +14,7 @@ const Register = () => {
     role: "KenSAP",
   });
   const [error, setError] = useState("");
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -23,13 +24,12 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    
+
     try {
-      // Use your API wrapper for consistent error handling
       const response = await api.post("/api/register/", formData);
-      
+
       if (response.status === 201) {
-        navigate("/"); // Redirect to login on success
+        setShowVerificationMessage(true);
       }
     } catch (err) {
       console.error("Registration error:", err);
@@ -41,65 +41,70 @@ const Register = () => {
     <div className="auth-container">
       <AuthBackground />
       <div className="auth-right">
+        {showVerificationMessage && (
+          <p className="success-message">
+            Registration successful! Please check your email to verify your account.
+          </p>
+        )}
         <h2>Create an Account</h2>
         <p>Sign up to start your journey</p>
         {error && <p className="error-message">{error}</p>}
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label>First Name</label>
-          <input 
-            type="text" 
-            name="first_name" 
-            placeholder="Enter your first name" 
-            value={formData.first_name} 
-            onChange={handleChange} 
-            required 
+          <input
+            type="text"
+            name="first_name"
+            placeholder="Enter your first name"
+            value={formData.first_name}
+            onChange={handleChange}
+            required
           />
 
           <label>Last Name</label>
-          <input 
-            type="text" 
-            name="last_name" 
-            placeholder="Enter your last name" 
-            value={formData.last_name} 
-            onChange={handleChange} 
-            required 
+          <input
+            type="text"
+            name="last_name"
+            placeholder="Enter your last name"
+            value={formData.last_name}
+            onChange={handleChange}
+            required
           />
 
           <label>Email Address</label>
-          <input 
-            type="email" 
-            name="email" 
-            placeholder="Enter your email" 
-            value={formData.email} 
-            onChange={handleChange} 
-            required 
+          <input
+            type="email"
+            name="email"
+            placeholder="Enter your email"
+            value={formData.email}
+            onChange={handleChange}
+            required
           />
 
           <label>Password</label>
-          <input 
-            type="password" 
-            name="password" 
-            placeholder="Create a password" 
-            value={formData.password} 
-            onChange={handleChange} 
-            required 
+          <input
+            type="password"
+            name="password"
+            placeholder="Create a password"
+            value={formData.password}
+            onChange={handleChange}
+            required
           />
 
           <label>Phone Number</label>
-          <input 
-            type="tel" 
-            name="phone" 
-            placeholder="Enter your phone number" 
-            value={formData.phone} 
-            onChange={handleChange} 
+          <input
+            type="tel"
+            name="phone"
+            placeholder="Enter your phone number"
+            value={formData.phone}
+            onChange={handleChange}
           />
 
           <label>Role</label>
-          <select 
-            name="role" 
-            value={formData.role} 
-            onChange={handleChange} 
+          <select
+            name="role"
+            value={formData.role}
+            onChange={handleChange}
             required
           >
             <option value="KenSAP">KenSAP Student</option>
@@ -115,6 +120,7 @@ const Register = () => {
         </p>
       </div>
     </div>
+
   );
 };
 

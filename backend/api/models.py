@@ -1,7 +1,8 @@
 from django.db import models
-from django.utils.timezone import now
+from django.utils.timezone import now, timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import ValidationError
 import calendar
 
 
@@ -12,6 +13,7 @@ class CustomUserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
+        user.is_active = False  # User must verify email
         user.save(using=self._db)
         return user
 
@@ -19,12 +21,6 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         return self.create_user(email, password, **extra_fields)
-    
-class University(models.Model):
-    name = models.CharField(max_length=255, unique=True)
-
-    def __str__(self):
-        return self.name
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = [
@@ -44,6 +40,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    email_verification_token = models.CharField(max_length=255, blank=True, null=True)
+    email_verification_sent_at = models.DateTimeField(blank=True, null=True)
 
     # Role-Specific Fields
     highschool = models.CharField(max_length=255, blank=True, null=True)
@@ -86,9 +84,29 @@ class User(AbstractBaseUser, PermissionsMixin):
             RoleTransition.objects.create(user=self, old_role=self.role, new_role=new_role)
             self.role = new_role
             self.save()
+    
+    def is_verification_token_expired(self):
+        """Check if the stored verification token is expired (7 days)."""
+        if not self.email_verification_sent_at:
+            return True
+        return now() > self.email_verification_sent_at + timedelta(days=7)
+
+    def clean(self):
+        if not self.is_active:
+            raise ValidationError("Please verify your email before logging in.")
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.role})"
+    
+
+class VerificationLog(models.Model):
+    """Track email verification attempts"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(default=now)
+    status = models.CharField(max_length=20, choices=[('Success', 'Success'), ('Failed', 'Failed')])
+
+    def __str__(self):
+        return f"{self.user.email} - {self.status} at {self.timestamp}"
 
 class RoleTransition(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -98,7 +116,12 @@ class RoleTransition(models.Model):
 
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name}: {self.old_role} → {self.new_role}"
+    
+class University(models.Model):
+    name = models.CharField(max_length=255, unique=True)
 
+    def __str__(self):
+        return self.name
 
 # === PARTNERS ===
 class Partner(models.Model):

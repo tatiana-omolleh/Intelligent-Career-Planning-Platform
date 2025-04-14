@@ -3,22 +3,44 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .utils import generate_reset_token, generate_verification_token, send_verification_email, expiring_token_generator, verify_reset_token
 from .permissions import IsCareersTeam
 from django.utils.timezone import now
-from .models import JobInternshipAssignedTo, Partner, PartnerInteraction, User, JobInternship, InternshipApplication
-from .serializers import AssignInternshipSerializer, PartnerInteractionSerializer, PartnerSerializer, UserSerializer, RegisterUserSerializer, ProfileUpdateSerializer, JobInternshipSerializer, InternshipApplicationSerializer
+from .models import JobInternshipAssignedTo, Partner, PartnerInteraction, User, JobInternship, InternshipApplication, VerificationLog
+from .serializers import AssignInternshipSerializer, CustomTokenObtainPairSerializer, PartnerInteractionSerializer, PartnerSerializer, UserSerializer, RegisterUserSerializer, ProfileUpdateSerializer, JobInternshipSerializer, InternshipApplicationSerializer
 from django.http import JsonResponse
 from django.views import View
 from django.db.utils import IntegrityError
 from django.core.exceptions import ValidationError
 from django.db.models import OuterRef, Exists
+from django.utils.http import urlsafe_base64_decode
+from django.contrib.auth.tokens import default_token_generator
+from django.shortcuts import get_object_or_404
+from django.core.mail import send_mail, EmailMultiAlternatives
+from django.views.decorators.csrf import csrf_exempt
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from rest_framework.pagination import PageNumberPagination
+from django.conf import settings
+
+import json
 import logging
 
 logger = logging.getLogger(__name__)
 
+from django.contrib.auth import get_user_model
+
+User = get_user_model() 
+
 class HomeView(View):
     def get(self, request):
         return JsonResponse({"message": "Welcome to the KenSAP Careers API!"})
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 25  # Default items per page
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class RegisterUserView(CreateAPIView):
     queryset = User.objects.all()
@@ -46,10 +68,71 @@ class RegisterUserView(CreateAPIView):
         logger.warning(f"Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class RequestPasswordResetView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            return Response({"message": "If the email exists, a reset link will be sent."}, status=status.HTTP_200_OK)
+
+        # Generate reset token
+        uid, token = generate_reset_token(user)
+
+        # Create reset link for frontend
+        reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}/"
+
+        # Send reset email
+        subject = "Reset Your Password"
+        html_message = render_to_string("emails/password_reset_email.html", {"reset_url": reset_url})
+        plain_message = strip_tags(html_message)
+
+        email = EmailMultiAlternatives(subject, plain_message, settings.EMAIL_HOST_USER, [user.email])
+        email.attach_alternative(html_message, "text/html")
+        email.send()
+
+        return Response({"message": "Password reset link sent!"}, status=status.HTTP_200_OK)
+    
+class ResetPasswordConfirmView(APIView):
+
+    permission_classes = [AllowAny]
+    
+    def post(self, request, uid, token):
+        new_password = request.data.get("password")
+
+        # Validate token
+        user = verify_reset_token(uid, token, User)
+
+        if not user:
+            return Response({"error": "Invalid or expired reset token."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update password
+        user.set_password(new_password)
+        user.save()
+
+        return Response({"message": "Password reset successful!"}, status=status.HTTP_200_OK)
+
+    
 class UserListCreateView(ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsCareersTeam]  # Restrict access to Careers Team only
+
+# Example Django View
+class UserListView(APIView):
+    def get(self, request):
+        role = request.query_params.get('role')
+        if role:
+            roles = role.split(",")
+            users = User.objects.filter(role__in=roles)
+        else:
+            users = User.objects.all()
+        serializer = UserSerializer(users, many=True)
+        return Response(serializer.data)
+
 
 class ProfileUpdateView(RetrieveUpdateAPIView):
     queryset = User.objects.all()
@@ -271,4 +354,48 @@ class PartnerDeleteView(DestroyAPIView):
     queryset = Partner.objects.all()
     serializer_class = PartnerSerializer
     permission_classes = [IsAuthenticated, IsCareersTeam]
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+class VerifyEmailView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, uidb64, token):
+        try:
+            uid = urlsafe_base64_decode(uidb64).decode()
+            user = get_object_or_404(User, pk=uid)
+
+            # Validate stored token
+            if user.email_verification_token == token and not user.is_verification_token_expired():
+                user.is_active = True  # Activate account
+                user.email_verification_token = None  # Clear token after successful verification
+                user.save()
+
+                VerificationLog.objects.create(user=user, status="Success")
+
+                return Response({"message": "Email verified successfully!"}, status=status.HTTP_200_OK)
+
+            VerificationLog.objects.create(user=user, status="Failed")
+            return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class ResendVerificationEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        user = get_object_or_404(User, email=email)
+
+        if user.is_active:
+            return Response({"message": "User already verified!"}, status=status.HTTP_400_BAD_REQUEST)
+
+        uid, token = generate_verification_token(user)
+        send_verification_email(user, uid, token)
+
+        return Response({"message": "Verification email resent!"}, status=status.HTTP_200_OK)
 

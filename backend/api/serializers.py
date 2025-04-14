@@ -1,12 +1,39 @@
+import logging
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.hashers import make_password
 from .models import JobInternshipAssignedTo, Partner, PartnerInteraction, User, University, JobInternship, InternshipApplication
 from django.utils.timezone import now
+from .utils import generate_verification_token, send_verification_email
+from django.core.mail import send_mail, EmailMultiAlternatives
+from django.urls import reverse
+from django.conf import settings
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+
+
+logger = logging.getLogger(__name__)
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = '__all__'
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        # Validate user credentials
+        data = super().validate(attrs)
+
+        # Log user status for debugging
+        logger.info(f"User {self.user.email} is_active={self.user.is_active}")
+
+        # Check if user is unverified (inactive)
+        if not self.user.is_active:
+            uid, token = generate_verification_token(self.user)
+            send_verification_email(self.user, uid, token)
+            raise Exception("Please verify your email before logging in.")
+
+        return data
 
 class RegisterUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -17,7 +44,27 @@ class RegisterUserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['password'] = make_password(validated_data['password'])  # Hash password
-        return User.objects.create(**validated_data)
+        user = User.objects.create(**validated_data)
+        user.is_active = False  # Make user inactive until email verification
+        user.save()
+
+        # Generate verification token
+        uid, token = generate_verification_token(user)
+
+        # Use frontend URL for the verification link
+        verification_url = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/"
+
+        # ✅ Render HTML email template
+        subject = "Verify Your Email – KenSAP Careers"
+        html_message = render_to_string("emails/verify_email.html", {"user": user, "verification_url": verification_url})
+        plain_message = strip_tags(html_message)  # Create a plain text fallback
+
+        # ✅ Send email with both HTML and plain text
+        email = EmailMultiAlternatives(subject, plain_message, settings.EMAIL_HOST_USER, [user.email])
+        email.attach_alternative(html_message, "text/html")
+        email.send()
+
+        return user
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     graduation_month = serializers.IntegerField(required=False, min_value=1, max_value=12)

@@ -19,16 +19,16 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
-from api.views import HomeView, UserDetailView, UserListCreateView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from api.views import CustomTokenObtainPairView, HomeView, UserDetailView, UserListCreateView
+from rest_framework_simplejwt.views import  TokenRefreshView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     # Update this to match frontend call - changed from "api/user/register/"
     # path("api/register/", UserListCreateView.as_view(), name="register"),
     path("api/user/", UserDetailView.as_view(), name="user-detail"),
-    path("api/token/", TokenObtainPairView.as_view(), name="get_token"),
-    path("api/token/refresh/", TokenRefreshView.as_view(), name="refresh"),
+    path("api/token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api-auth/", include("rest_framework.urls")),
     path('', HomeView.as_view(), name="home"),
     path("api/", include("api.urls")),

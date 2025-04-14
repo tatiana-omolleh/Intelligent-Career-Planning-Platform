@@ -20,8 +20,14 @@ const CareerDashboard = () => {
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState(null);
+  const [kensapStudents, setKenSAPStudents] = useState([]);
+  const [alumniAndUndergrads, setAlumniAndUndergrads] = useState([]);
   const [showPartnerActionsModal, setShowPartnerActionsModal] = useState(false);
   const [interactions, setInteractions] = useState([]);
+  const [showStudentModal, setShowStudentModal] = useState(false);
+  const [kensapSearch, setKenSAPSearch] = useState("");
+  const [alumniSearch, setAlumniSearch] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [newInteraction, setNewInteraction] = useState({ interaction_type: "", notes: "" });
   const filteredStudents = students.filter((student) =>
     `${student.first_name} ${student.last_name}`.toLowerCase().includes(searchQuery.toLowerCase())
@@ -74,6 +80,33 @@ const CareerDashboard = () => {
       fetchPartners();
     }
   }, [activeTab]);
+
+  const fetchKenSAPStudents = async () => {
+    try {
+      const response = await api.get("/api/useres/?role=KenSAP");
+      setKenSAPStudents(response.data); // ✅ Set KenSAP Students
+    } catch (error) {
+      console.error("Error fetching KenSAP students:", error);
+    }
+  };
+
+  // Fetch Alumni & Undergraduates
+  const fetchAlumniAndUndergrads = async () => {
+    try {
+      const response = await api.get("/api/useres/?role=Alumni,Undergrad");
+      setAlumniAndUndergrads(response.data); // ✅ Set Alumni & Undergrads
+    } catch (error) {
+      console.error("Error fetching Alumni and Undergrads:", error);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === "kensap") {
+      fetchKenSAPStudents();
+    } else if (activeTab === "alumni") {
+      fetchAlumniAndUndergrads();
+    }
+  }, [activeTab]);
+
 
   const fetchInternships = async () => {
     try {
@@ -174,6 +207,17 @@ const CareerDashboard = () => {
     "Follow Up": "follow_up",
     "Alan to Follow Up": "alan_to_follow",
   };
+  const currentSearch = activeTab === "kensap"
+    ? kensapSearch
+    : activeTab === "alumni"
+      ? alumniSearch
+      : "";
+
+  const setCurrentSearch = activeTab === "kensap"
+    ? setKenSAPSearch
+    : activeTab === "alumni"
+      ? setAlumniSearch
+      : () => { };
 
   const handleCreatePartner = async (e) => {
     e.preventDefault();
@@ -315,6 +359,93 @@ const CareerDashboard = () => {
     return names.map((n) => n[0].toUpperCase()).join("").slice(0, 2);
   };
 
+  const UserTable = ({ data, searchQuery }) => {
+    const [studentPage, setStudentPage] = useState(1);
+    const [studentsPerPage, setStudentsPerPage] = useState(5);
+
+    const filtered = data.filter((s) =>
+      `${s.first_name} ${s.last_name}`.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const totalPages = Math.ceil(filtered.length / studentsPerPage);
+    const currentPageData = filtered.slice(
+      (studentPage - 1) * studentsPerPage,
+      studentPage * studentsPerPage
+    );
+
+    const start = (studentPage - 1) * studentsPerPage + 1;
+    const end = Math.min(start + studentsPerPage - 1, filtered.length);
+
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <p style={{ margin: 0, fontWeight: "bold" }}>Showing {start}–{end} of {filtered.length} students</p>
+          <select
+            value={studentsPerPage}
+            onChange={(e) => {
+              setStudentsPerPage(Number(e.target.value));
+              setStudentPage(1);
+            }}
+            style={{ padding: "0.5rem" }}
+          >
+            <option value={5}>5 / page</option>
+            <option value={10}>10 / page</option>
+            <option value={20}>20 / page</option>
+          </select>
+        </div>
+
+        <table className="user-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Role</th>
+              <th>University</th>
+              <th>Major</th>
+              <th>Company</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {currentPageData.map((user) => (
+              <tr key={user.id}>
+                <td>{user.first_name} {user.last_name}</td>
+                <td>{user.role}</td>
+                <td>{user.university || "N/A"}</td>
+                <td>{user.major || "N/A"}</td>
+                <td>{user.company || "N/A"}</td>
+                <td>
+                  <button onClick={() => {
+                    setSelectedStudent(user);
+                    setShowStudentModal(true);
+                  }}>View</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: "1rem" }}>
+          {Array.from({ length: totalPages }, (_, idx) => (
+            <button
+              key={idx + 1}
+              onClick={() => setStudentPage(idx + 1)}
+              style={{
+                margin: "0 5px",
+                padding: "5px 10px",
+                backgroundColor: studentPage === idx + 1 ? "#007bff" : "#f0f0f0",
+                color: studentPage === idx + 1 ? "#fff" : "#000",
+                border: "none",
+                borderRadius: "4px"
+              }}
+            >
+              {idx + 1}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const handleLogout = () => {
     localStorage.clear();
     navigate("/");
@@ -341,7 +472,9 @@ const CareerDashboard = () => {
         <h2>KenSAP</h2>
         <ul>
           <li className={activeTab === "dashboard" ? "active" : ""} onClick={() => setActiveTab("dashboard")}>Dashboard</li>
-          <li className={activeTab === "careerOpportunities" ? "active" : ""} onClick={() => setActiveTab("careerOpportunities")}>Career Opportunities</li>
+          <li className={activeTab === "kensap" ? "active" : ""} onClick={() => setActiveTab("kensap")}>KenSAP Students</li>
+          <li className={activeTab === "alumni" ? "active" : ""} onClick={() => setActiveTab("alumni")}>Alumni</li>
+          {/* <li className={activeTab === "careerOpportunities" ? "active" : ""} onClick={() => setActiveTab("careerOpportunities")}>Career Opportunities</li> */}
           <li className={activeTab === "internships" ? "active" : ""} onClick={() => setActiveTab("internships")}>Internships</li>
           <li className={activeTab === "partners" ? "active" : ""} onClick={() => setActiveTab("partners")}>Partners</li>
           <li className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>Settings</li>
@@ -373,13 +506,24 @@ const CareerDashboard = () => {
                     ? "Settings"
                     : activeTab === "profile"
                       ? "Update Profile"
-                      : activeTab === "partners"
-                        ? "Manage Partners"
-                        : ""}
+                      : activeTab === "kensap"
+                        ? "KenSAP Students"
+                        : activeTab === "alumni"
+                          ? "Alumni & Undergrads"
+                          : activeTab === "partners"
+                            ? "Manage Partners"
+                            : ""}
           </h1>
+          <input
+            type="text"
+            placeholder="Search..."
+            className="search-bar"
+            value={currentSearch}
+            onChange={(e) => setCurrentSearch(e.target.value)}
+          />
 
 
-          <input type="text" placeholder="Search..." className="search-bar" />
+
 
           {activeTab === "internships" ? (
             <button className="new-entry-button" onClick={() => setShowModal(true)}>+ Add Internship</button>
@@ -577,6 +721,59 @@ const CareerDashboard = () => {
               )}
             </div>
           )}
+          {activeTab === "kensap" && (
+            <>
+              {showStudentModal && selectedStudent && (
+                <div className="modal-overlay">
+                  <div className="modal-content">
+                    <button className="modal-close-btn" onClick={() => setShowStudentModal(false)}>✖</button>
+                    <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
+                    <p><strong>Email:</strong> {selectedStudent.email}</p>
+                    <p><strong>Phone:</strong> {selectedStudent.phone || "N/A"}</p>
+                    <p><strong>Role:</strong> {selectedStudent.role}</p>
+                    <p><strong>Highschool:</strong> {selectedStudent.highschool || "N/A"}</p>
+                    <p><strong>KenSAP Year:</strong> {selectedStudent.kensap_year || "N/A"}</p>
+                    <p><strong>GPA:</strong> {selectedStudent.gpa || "N/A"}</p>
+                    <p><strong>University:</strong> {selectedStudent.university || "N/A"}</p>
+                    <p><strong>Major:</strong> {selectedStudent.major || "N/A"}</p>
+                    <p><strong>Minor:</strong> {selectedStudent.minor || "N/A"}</p>
+                    <p><strong>Graduation:</strong> {selectedStudent.graduation_month || "--"}/{selectedStudent.graduation_year || "--"}</p>
+                    <p><strong>Company:</strong> {selectedStudent.company || "N/A"}</p>
+                    <p><strong>City:</strong> {selectedStudent.city || "N/A"}</p>
+                  </div>
+                </div>
+              )}
+
+              <UserTable data={kensapStudents} searchQuery={kensapSearch} />
+            </>
+          )}
+          {activeTab === "alumni" && (
+            <>
+              {showStudentModal && selectedStudent && (
+                <div className="modal-overlay">
+                  <div className="modal-content">
+                    <button className="modal-close-btn" onClick={() => setShowStudentModal(false)}>✖</button>
+                    <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
+                    <p><strong>Email:</strong> {selectedStudent.email}</p>
+                    <p><strong>Phone:</strong> {selectedStudent.phone || "N/A"}</p>
+                    <p><strong>Role:</strong> {selectedStudent.role}</p>
+                    <p><strong>Highschool:</strong> {selectedStudent.highschool || "N/A"}</p>
+                    <p><strong>KenSAP Year:</strong> {selectedStudent.kensap_year || "N/A"}</p>
+                    <p><strong>GPA:</strong> {selectedStudent.gpa || "N/A"}</p>
+                    <p><strong>University:</strong> {selectedStudent.university || "N/A"}</p>
+                    <p><strong>Major:</strong> {selectedStudent.major || "N/A"}</p>
+                    <p><strong>Minor:</strong> {selectedStudent.minor || "N/A"}</p>
+                    <p><strong>Graduation:</strong> {selectedStudent.graduation_month || "--"}/{selectedStudent.graduation_year || "--"}</p>
+                    <p><strong>Company:</strong> {selectedStudent.company || "N/A"}</p>
+                    <p><strong>City:</strong> {selectedStudent.city || "N/A"}</p>
+                  </div>
+                </div>
+              )}
+
+              <UserTable data={alumniAndUndergrads} searchQuery={alumniSearch} />
+
+            </>
+          )}
           {/* Profile Update Section */}
           {activeTab === "profile" && (
             <div className="profile-content">
@@ -598,6 +795,7 @@ const CareerDashboard = () => {
               </form>
             </div>
           )}
+
           {activeTab === "partners" && (
             <div className="partners-content">
               <h2>Partners</h2>
@@ -747,20 +945,20 @@ const CareerDashboard = () => {
                       )}
                     </div>
                     <form onSubmit={handleAddInteraction}>
-                    <h3>Add Interaction</h3>
-                    <input type="text" placeholder="Interaction Type" value={newInteraction.interaction_type} onChange={(e) => setNewInteraction({ ...newInteraction, interaction_type: e.target.value })} />
-                    <textarea placeholder="Notes" value={newInteraction.notes} onChange={(e) => setNewInteraction({ ...newInteraction, notes: e.target.value })}></textarea>
-                    <label>Interaction Date</label>
-                    <input
-                      type="date"
-                      value={newInteraction.interaction_date}
-                      max={new Date().toISOString().split("T")[0]} // ✅ Restrict future dates
-                      onChange={(e) => setNewInteraction({ ...newInteraction, interaction_date: e.target.value })}
-                    />
-                    
+                      <h3>Add Interaction</h3>
+                      <input type="text" placeholder="Interaction Type" value={newInteraction.interaction_type} onChange={(e) => setNewInteraction({ ...newInteraction, interaction_type: e.target.value })} />
+                      <textarea placeholder="Notes" value={newInteraction.notes} onChange={(e) => setNewInteraction({ ...newInteraction, notes: e.target.value })}></textarea>
+                      <label>Interaction Date</label>
+                      <input
+                        type="date"
+                        value={newInteraction.interaction_date}
+                        max={new Date().toISOString().split("T")[0]} // ✅ Restrict future dates
+                        onChange={(e) => setNewInteraction({ ...newInteraction, interaction_date: e.target.value })}
+                      />
 
 
-                    <button className="confirm-btn">Add Interaction</button>
+
+                      <button className="confirm-btn">Add Interaction</button>
                     </form>
                   </div>
                 </div>
