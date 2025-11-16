@@ -165,6 +165,8 @@ export default function AssessmentForm({ onComplete, onBack }) {
 
       await api.post("assessment/predict/");
       onComplete(response.data);
+      setPage("results");
+
     } catch (error) {
       console.error("Assessment submission failed:", error.response?.data || error);
       alert("Error submitting assessment. Please try again.");

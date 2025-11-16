@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from django.db import models  # [Fix 1: Add this import]
 from .permissions import IsAdminUser
 from .serializers import UserSerializer
 
@@ -16,7 +17,8 @@ class AdminUserListView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def get(self, request):
-        users = User.objects.all().order_by('-date_joined')
+        # [Fix 2: Change 'date_joined' to 'created_at']
+        users = User.objects.all().order_by('-created_at')
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -33,7 +35,7 @@ class AdminUpdateUserRoleView(APIView):
             return Response({"error": "Role is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(id=user_id)
+            user = User.objects.get(user_id=user_id) # Note: Make sure to use user_id or pk if your model uses user_id as primary key
             user.role = new_role
             user.save()
             return Response({"message": f"{user.first_name}'s role updated to {new_role}"}, status=status.HTTP_200_OK)
@@ -49,7 +51,7 @@ class AdminToggleUserStatusView(APIView):
 
     def patch(self, request, user_id):
         try:
-            user = User.objects.get(id=user_id)
+            user = User.objects.get(user_id=user_id) # Note: Ensure this matches your model's PK
             user.is_active = not user.is_active
             user.save()
             status_label = "activated" if user.is_active else "deactivated"
@@ -69,10 +71,11 @@ class AdminDashboardStatsView(APIView):
         active_users = User.objects.filter(is_active=True).count()
         inactive_users = User.objects.filter(is_active=False).count()
 
+        # This requires the 'from django.db import models' added above
         by_role = (
             User.objects.values('role')
             .order_by('role')
-            .annotate(count=models.Count('id'))
+            .annotate(count=models.Count('user_id')) # Best practice to count PK
         )
 
         data = {

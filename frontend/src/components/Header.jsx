@@ -19,8 +19,8 @@ export function Header({ currentPage, isLoggedIn, userName, onNavigate, onLogout
  {isLoggedIn && (
  <nav className="hidden md:flex items-center gap-1">
  <Button
- variant={currentPage === "careers" ? "secondary" : "ghost"}
- onClick={() => onNavigate("careers")}
+ variant={currentPage === "results" ? "secondary" : "ghost"}
+ onClick={() => onNavigate("results")}
  >
  Career Paths
  </Button>

@@ -109,7 +109,7 @@ class AssessmentPredictView(APIView):
 
         # Each student_id in the dataset corresponds to one student
         # We'll use user.id (or a synthetic ID if not found)
-        student_id = request.user.id
+        student_id = request.user.pk
 
         # Predict top 5 careers for the user
         all_careers = df["Career"].unique()

@@ -7,6 +7,8 @@ import AssessmentForm from "./components/AssessmentForm";
 import { MentorshipChatbot } from "./components/MentorshipChatbot";
 import ProfilePage from "./components/ProfilePage"; // ✅ import the new ProfilePage
 import api from "./api/api";
+import Results from "./components/Results";
+import { InternshipsPage } from "./components/InternshipsPage";
 
 function App() {
   const [page, setPage] = useState("hero");
@@ -128,8 +130,14 @@ function App() {
       {/* ✅ Profile Page (new version) */}
       {page === "profile" && <ProfilePage />}
 
+      {/* Results Page */}
+      {page === "results" && <Results />}
+
       {/* Mentorship Chatbot */}
       {page === "chatbot" && <MentorshipChatbot />}
+
+      {/* Internships Page */}
+      {page === "internships" && <InternshipsPage />}
 
       {/* Admin Dashboard */}
       {page === "admin" && role === "Admin" && (

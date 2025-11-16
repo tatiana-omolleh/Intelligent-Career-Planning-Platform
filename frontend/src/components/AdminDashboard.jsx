@@ -74,7 +74,7 @@ export default function AdminDashboard({ onLogout }) {
       await toggleUserStatus(userId);
       setUsers((prev) =>
         prev.map((u) =>
-          u.id === userId ? { ...u, is_active: !u.is_active } : u
+          u.user_id === userId ? { ...u, is_active: !u.is_active } : u // [FIX] Changed u.id to u.user_id
         )
       );
     } catch (err) {
@@ -86,7 +86,7 @@ export default function AdminDashboard({ onLogout }) {
     try {
       await updateUserRole(userId, newRole);
       setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+        prev.map((u) => (u.user_id === userId ? { ...u, role: newRole } : u)) // [FIX] Changed u.id to u.user_id
       );
     } catch (err) {
       console.error("Failed to update user role:", err);
@@ -118,9 +118,9 @@ export default function AdminDashboard({ onLogout }) {
               <h1 className="text-lg font-semibold text-foreground">
                 Kazini Admin
               </h1>
-              <p className="text-sm text-muted-foreground">
+              {/* <p className="text-sm text-muted-foreground">
                 Platform Management
-              </p>
+              </p> */}
             </div>
           </div>
 
@@ -173,19 +173,7 @@ export default function AdminDashboard({ onLogout }) {
             </Card>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <Card>
-              <CardContent className="flex flex-col gap-2 p-6">
-                <Briefcase className="h-6 w-6 text-primary" />
-                <p className="text-3xl font-semibold">
-                  {stats?.total_roles?.Mentor || 0}
-                </p>
-                <p className="text-sm text-muted-foreground">Mentors</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          {/* <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <Card>
               <CardContent className="flex flex-col gap-2 p-6">
                 <CheckCircle2 className="h-6 w-6 text-primary" />
@@ -195,11 +183,11 @@ export default function AdminDashboard({ onLogout }) {
                 <p className="text-sm text-muted-foreground">Admin Accounts</p>
               </CardContent>
             </Card>
-          </motion.div>
+          </motion.div>*/ }
         </div>
 
-        {/* Users Table */}
-        <Card>
+{/* Users Table */}
+<Card>
           <CardHeader>
             <CardTitle className="text-lg font-medium">User Management</CardTitle>
           </CardHeader>
@@ -217,7 +205,7 @@ export default function AdminDashboard({ onLogout }) {
                 </TableHeader>
                 <TableBody>
                   {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
+                    <TableRow key={user.user_id}> {/* [FIX] Changed user.id to user.user_id */}
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
@@ -239,7 +227,7 @@ export default function AdminDashboard({ onLogout }) {
                         <Select
                           defaultValue={user.role}
                           onValueChange={(value) =>
-                            handleRoleChange(user.id, value)
+                            handleRoleChange(user.user_id, value) // [FIX] Changed user.id to user.user_id
                           }
                         >
                           <SelectTrigger className="w-[120px]">
@@ -261,13 +249,14 @@ export default function AdminDashboard({ onLogout }) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(user.date_joined).toLocaleDateString()}
+                        {/* [FIX] Changed user.date_joined to user.created_at (based on previous fix) */}
+                        {new Date(user.created_at).toLocaleDateString()} 
                       </TableCell>
                       <TableCell>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleToggleStatus(user.id)}
+                          onClick={() => handleToggleStatus(user.user_id)} // [FIX] Changed user.id to user.user_id
                         >
                           {user.is_active ? "Deactivate" : "Activate"}
                         </Button>

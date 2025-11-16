@@ -10,14 +10,14 @@ function Avatar({
  ...props
 }) {
  return (
- <AvatarPrimitive.Root
- data-slot="avatar"
- className={cn(
- "relative flex size-10 shrink-0 overflow-hidden rounded-full",
- className,
- )}
- {...props}
- />
+  <ReactAvatarPrimitive.Root // [FIX] Changed from AvatarPrimitive
+   data-slot="avatar"
+   className={cn(
+    "relative flex size-10 shrink-0 overflow-hidden rounded-full",
+    className,
+   )}
+   {...props}
+  />
  );
 }
 
@@ -26,11 +26,11 @@ function AvatarImage({
  ...props
 }) {
  return (
- <AvatarPrimitive.Image
- data-slot="avatar-image"
- className={cn("aspect-square size-full", className)}
- {...props}
- />
+  <ReactAvatarPrimitive.Image // [FIX] Changed from AvatarPrimitive
+   data-slot="avatar-image"
+   className={cn("aspect-square size-full", className)}
+   {...props}
+  />
  );
 }
 
@@ -39,14 +39,14 @@ function AvatarFallback({
  ...props
 }) {
  return (
- <AvatarPrimitive.Fallback
- data-slot="avatar-fallback"
- className={cn(
- "bg-muted flex size-full items-center justify-center rounded-full",
- className,
- )}
- {...props}
- />
+  <ReactAvatarPrimitive.Fallback // [FIX] Changed from AvatarPrimitive
+   data-slot="avatar-fallback"
+   className={cn(
+    "bg-muted flex size-full items-center justify-center rounded-full",
+    className,
+   )}
+   {...props}
+  />
  );
 }
 

@@ -22,9 +22,16 @@ class RegisterUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email', 'password', 'phone', 'role']
+        extra_kwargs = {
+            'phone': {'required': False, 'allow_blank': True, 'allow_null': True},
+            'role': {'required': False},
+        }
 
     def create(self, validated_data):
         validated_data['password'] = make_password(validated_data['password'])
+        validated_data.setdefault('role', User.ROLE_CHOICES[0][0])
+        if not validated_data.get('phone'):
+            validated_data['phone'] = None
         user = User.objects.create(**validated_data)
         user.is_active = False
         user.save()
