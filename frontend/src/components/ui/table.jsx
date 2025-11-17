@@ -52,7 +52,11 @@ function TableFooter({ className, ...props }) {
  );
 }
 
-function TableRow({ className, ...props }) {
+function TableRow({ className, children, ...props }) {
+ const sanitizedChildren = React.Children.toArray(children).filter(
+ (child) => !(typeof child === "string" && /^\s*$/.test(child)),
+ );
+
  return (
  <tr
  data-slot="table-row"
@@ -61,7 +65,9 @@ function TableRow({ className, ...props }) {
  className,
  )}
  {...props}
- />
+ >
+ {sanitizedChildren}
+ </tr>
  );
 }
 

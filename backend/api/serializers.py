@@ -171,7 +171,7 @@ class JobSerializer(serializers.ModelSerializer):
             'max_salary', 'salary_currency', 'salary_period', 'experience_level',
             'education_level', 'industry', 'company_size', 'job_posting_date',
             'application_deadline', 'benefits', 'requirements', 'responsibilities',
-            'is_active', 'created_at', 'updated_at'
+            'is_active', 'created_at', 'updated_at', 'application_url'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

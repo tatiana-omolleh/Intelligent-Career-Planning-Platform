@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -10,6 +9,7 @@ import {
   CheckCircle2,
   LogOut,
   Search,
+  Wrench,
 } from "lucide-react";
 import {
   getAllUsers,
@@ -39,8 +39,7 @@ import {
 } from "./ui/select";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 
-export default function AdminDashboard({ onLogout }) {
-  const navigate = useNavigate();
+export default function AdminDashboard({ onLogout, onManageJobs }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
@@ -48,7 +47,6 @@ export default function AdminDashboard({ onLogout }) {
 
   const handleLogout = () => {
     onLogout();
-    navigate("/");
   };
 
   useEffect(() => {
@@ -173,6 +171,31 @@ export default function AdminDashboard({ onLogout }) {
             </Card>
           </motion.div>
 
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <Card>
+              <CardContent className="flex flex-col gap-2 p-6">
+                <Briefcase className="h-6 w-6 text-primary" />
+                <p className="text-3xl font-semibold">
+                  {stats?.total_jobs || 0}
+                </p>
+                <p className="text-sm text-muted-foreground">Total Jobs</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <Card>
+              <CardContent className="flex flex-col gap-2 p-6">
+                <CheckCircle2 className="h-6 w-6 text-primary" />
+                <p className="text-3xl font-semibold">
+                  {stats?.total_internships || 0}
+                </p>
+                <p className="text-sm text-muted-foreground">Total Internships</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        
+
           {/* <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <Card>
               <CardContent className="flex flex-col gap-2 p-6">
@@ -190,6 +213,15 @@ export default function AdminDashboard({ onLogout }) {
 <Card>
           <CardHeader>
             <CardTitle className="text-lg font-medium">User Management</CardTitle>
+            <Button
+              variant="outline"
+              onClick={onManageJobs}
+              className="gap-2"
+            >
+              <Wrench className="w-4 h-4" />
+              Manage Jobs
+            </Button>
+        
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">

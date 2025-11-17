@@ -3,6 +3,7 @@ from .views_chatbot import chat_with_ai, get_conversation_messages, list_convers
 from django.urls import path, include
 from .views import (
     ProfileView,
+    RecommendedInternshipListView,
     RegisterUserView,
     CustomTokenObtainPairView,
     VerifyEmailView,
@@ -40,6 +41,9 @@ urlpatterns = [
     # Job endpoints (no authentication required)
     path("jobs/", JobListView.as_view(), name="job-list"),
     path("jobs/<int:id>/", JobDetailView.as_view(), name="job-detail"),
+
+    # Recommended internships
+    path("internships/", RecommendedInternshipListView.as_view(), name="internships-list"),
 
     path("admin/", include("api.urls_admin")),
     path("", include("api.urls_chatbot")),

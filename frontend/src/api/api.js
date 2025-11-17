@@ -77,4 +77,9 @@ api.interceptors.response.use(
   }
 );
 
+export const getRecommendedInternships = async () => {
+  const response = await api.get("internships/");
+  return response.data;
+};
+
 export default api;

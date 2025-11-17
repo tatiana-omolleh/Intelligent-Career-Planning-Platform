@@ -1,11 +1,12 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
+from rest_framework import status, generics
 from django.contrib.auth import get_user_model
-from django.db import models  # [Fix 1: Add this import]
+from django.db import models  
 from .permissions import IsAdminUser
-from .serializers import UserSerializer
+from .serializers import UserSerializer, JobSerializer
+from .models import Job
 
 User = get_user_model()
 
@@ -70,8 +71,9 @@ class AdminDashboardStatsView(APIView):
         total_users = User.objects.count()
         active_users = User.objects.filter(is_active=True).count()
         inactive_users = User.objects.filter(is_active=False).count()
+        total_jobs = Job.objects.count()
+        total_internships = Job.objects.filter(work_type='Internship').count()
 
-        # This requires the 'from django.db import models' added above
         by_role = (
             User.objects.values('role')
             .order_by('role')
@@ -83,5 +85,25 @@ class AdminDashboardStatsView(APIView):
             "active_users": active_users,
             "inactive_users": inactive_users,
             "by_role": list(by_role),
+            "total_jobs": total_jobs,
+            "total_internships": total_internships,
         }
         return Response(data, status=status.HTTP_200_OK)
+    
+class AdminJobListCreateView(generics.ListCreateAPIView):
+    """
+    Admin view to list all jobs/internships or create a new one.
+    """
+    queryset = Job.objects.all().order_by('-created_at')
+    serializer_class = JobSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+
+class AdminJobDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Admin view to read, update, or delete a single job/internship.
+    """
+    queryset = Job.objects.all()
+    serializer_class = JobSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    lookup_field = 'job_id' 

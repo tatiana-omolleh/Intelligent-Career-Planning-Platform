@@ -9,6 +9,7 @@ import ProfilePage from "./components/ProfilePage"; // ✅ import the new Profil
 import api from "./api/api";
 import Results from "./components/Results";
 import { InternshipsPage } from "./components/InternshipsPage";
+import JobManagement from "./components/JobManagement";
 
 function App() {
   const [page, setPage] = useState("hero");
@@ -141,7 +142,15 @@ function App() {
 
       {/* Admin Dashboard */}
       {page === "admin" && role === "Admin" && (
-        <AdminDashboard onLogout={handleLogout} />
+        <AdminDashboard
+          onLogout={handleLogout}
+          onManageJobs={() => setPage("jobs")}
+        />
+      )}
+
+      {/* Job Management */}
+      {page === "jobs" && role === "Admin" && (
+        <JobManagement onBack={() => setPage("admin")} />
       )}
     </>
   );

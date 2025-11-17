@@ -11,6 +11,8 @@ from django.utils.http import urlsafe_base64_decode
 from django.utils.encoding import force_str
 from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, permission_classes
+from django.db.models import Case, When, Value, IntegerField
+from rest_framework import generics
 from django.conf import settings
 import os
 import joblib
@@ -100,39 +102,74 @@ class AssessmentPredictView(APIView):
         except Assessment.DoesNotExist:
             return Response({"error": "No assessment found for this user."}, status=status.HTTP_404_NOT_FOUND)
 
-        # ✅ Load model + dataset
-        model_path = os.path.join(settings.BASE_DIR, "api", "ml_models", "career_recommender.pkl")
-        data_path = os.path.join(settings.BASE_DIR, "api", "ml_models", "career_path_in_all_field.csv")
+        try:
+            # ✅ Load model + dataset
+            # Model is in backend root, CSV is in api/ml_models/
+            model_path = os.path.join(settings.BASE_DIR, "career_recommender.pkl")
+            data_path = os.path.join(settings.BASE_DIR, "api", "ml_models", "career_path_in_all_field.csv")
 
-        model = joblib.load(model_path)
-        df = pd.read_csv(data_path)
+            # Check if files exist
+            if not os.path.exists(model_path):
+                return Response(
+                    {"error": f"Model file not found at {model_path}"}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            if not os.path.exists(data_path):
+                return Response(
+                    {"error": f"Data file not found at {data_path}"}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
-        # Each student_id in the dataset corresponds to one student
-        # We'll use user.id (or a synthetic ID if not found)
-        student_id = request.user.pk
+            model = joblib.load(model_path)
+            df = pd.read_csv(data_path)
 
-        # Predict top 5 careers for the user
-        all_careers = df["Career"].unique()
-        career_scores = []
-        for career in all_careers:
-            pred = model.predict(student_id, career)
-            career_scores.append({
-                "career": career,
-                "score": round(pred.est, 3)
-            })
+            # Each student_id in the dataset corresponds to one student
+            # We'll use user.id (or a synthetic ID if not found)
+            student_id = request.user.pk
 
-        top_careers = sorted(career_scores, key=lambda x: x["score"], reverse=True)[:5]
+            # Predict top 5 careers for the user
+            all_careers = df["Career"].unique()
+            career_scores = []
+            for career in all_careers:
+                try:
+                    pred = model.predict(student_id, career)
+                    career_scores.append({
+                        "career": career,
+                        "score": round(pred.est, 3)
+                    })
+                except Exception as e:
+                    # If prediction fails for a specific career, skip it
+                    continue
 
-        # ✅ Save best recommendation in DB
-        best_career = top_careers[0]["career"]
-        assessment.recommended_career = best_career
-        assessment.save()
+            if not career_scores:
+                return Response(
+                    {"error": "Could not generate predictions. Please check the model and data."}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
-        # Include recommendations in response
-        return Response({
-            "recommended_career": best_career,
-            "recommendations": top_careers
-        }, status=status.HTTP_200_OK)
+            top_careers = sorted(career_scores, key=lambda x: x["score"], reverse=True)[:5]
+
+            # ✅ Save best recommendation in DB
+            best_career = top_careers[0]["career"]
+            assessment.recommended_career = best_career
+            assessment.save()
+
+            # Include recommendations in response
+            return Response({
+                "recommended_career": best_career,
+                "recommendations": top_careers
+            }, status=status.HTTP_200_OK)
+
+        except FileNotFoundError as e:
+            return Response(
+                {"error": f"Required file not found: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Error generating predictions: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # Job Views
@@ -252,6 +289,43 @@ class ProfileView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class RecommendedInternshipListView(generics.ListAPIView):
+    """
+    Lists all active internships, with jobs matching the user's
+    recommended career industry appearing at the top.
+    """
+    serializer_class = JobSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Base queryset: only active internships
+        queryset = Job.objects.filter(work_type='Internship', is_active=True)
+
+        try:
+            # Get the user's top recommended career (as a string)
+            assessment = Assessment.objects.get(user=user)
+            recommended_career_industry = assessment.field # We use their assessed 'field'
+            
+            if recommended_career_industry:
+                # Annotate: 1 for recommended, 2 for others
+                queryset = queryset.annotate(
+                    recommend_score=Case(
+                        When(industry__icontains=recommended_career_industry, then=Value(1)),
+                        default=Value(2),
+                        output_field=IntegerField()
+                    )
+                )
+                # Order by score (1s first), then by creation date
+                return queryset.order_by('recommend_score', '-created_at')
+
+        except Assessment.DoesNotExist:
+            # If no assessment, just return by date
+            pass
+
+        return queryset.order_by('-created_at')
 
 
 

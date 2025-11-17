@@ -141,6 +141,7 @@ class Job(models.Model):
     company_size = models.CharField(max_length=50, blank=True, null=True)
     job_posting_date = models.DateField(null=True, blank=True)
     application_deadline = models.DateField(null=True, blank=True)
+    application_url = models.URLField(max_length=500, blank=True, null=True)
     benefits = models.TextField(blank=True, null=True)
     requirements = models.TextField(blank=True, null=True)
     responsibilities = models.TextField(blank=True, null=True)
