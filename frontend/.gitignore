@@ -23,3 +23,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# macOS
+.DS_Store
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
