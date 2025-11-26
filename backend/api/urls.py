@@ -9,12 +9,12 @@ from .views import (
     VerifyEmailView,
     ProfileUpdateView,
     AssessmentView,
-    AssessmentPredictView,
     JobListView,
     JobDetailView,
     delete_experience,
     experiences_view,
     update_experience,
+    predict_career,
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -27,7 +27,7 @@ urlpatterns = [
 
     # Assessment endpoints (JWT protected)
     path("assessment/", AssessmentView.as_view(), name="assessment"),
-    path("assessment/predict/", AssessmentPredictView.as_view(), name="assessment-predict"),
+    path('assessment/predict/', predict_career, name='predict-career'),
         
     # Profile
     path("profile/", ProfileView.as_view(), name="profile"),

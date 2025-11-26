@@ -25,7 +25,7 @@ export default function Results({ userName, onViewInternships, onChatWithMentor 
         const data = res.data.recommendations.map((item, index) => ({
           id: index + 1,
           title: item.career,
-          matchScore: Math.round((item.score / 4) * 100), // normalize (0–4 → 0–100)
+          matchScore: item.match_score,
           description: `A potential career path in ${item.career}. Recommended based on your GPA and skills.`,
           salary: "$65K - $120K", // placeholder until you connect real data
           growth: "High",
@@ -60,47 +60,6 @@ export default function Results({ userName, onViewInternships, onChatWithMentor 
             skills, interests, and GPA.
           </p>
         </div>
-
-        {/* Quick Actions */}
-        {/* <div className="grid md:grid-cols-2 gap-4 mb-8">
-          <Card
-            className="bg-gradient-to-br from-primary/5 to-chart-2/5 border-primary/20 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={onViewInternships}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
-                  <Briefcase className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="mb-1">Find Internships</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Browse opportunities matching your top career paths
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="bg-gradient-to-br from-chart-3/5 to-chart-5/5 border-chart-3/20 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={onChatWithMentor}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-chart-3 flex items-center justify-center">
-                  <MessageCircle className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="mb-1">Chat with Mentor AI</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Get personalized guidance on your career journey
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div> */}
 
         {/* Recommendations */}
         <div className="grid gap-6">

@@ -1,7 +1,8 @@
-# api/views.py
+from django.shortcuts import render
 from rest_framework import status
-from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.generics import CreateAPIView, UpdateAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -10,13 +11,13 @@ from django.shortcuts import get_object_or_404
 from django.utils.http import urlsafe_base64_decode
 from django.utils.encoding import force_str
 from django.contrib.auth import get_user_model
-from rest_framework.decorators import api_view, permission_classes
 from django.db.models import Case, When, Value, IntegerField
 from rest_framework import generics
 from django.conf import settings
 import os
 import joblib
 import pandas as pd
+from .ml_models.recommender_engine import CareerRecommender
 
 from .serializers import (
     ExperienceSerializer, ProfileSerializer, RegisterUserSerializer, CustomTokenObtainPairSerializer, ProfileUpdateSerializer,
@@ -26,6 +27,44 @@ from .utils import generate_verification_token, send_verification_email
 from .models import Experience, Profile, User, Assessment, Job
 
 User = get_user_model()
+
+# ---------------------------------------------------------
+# ✅ GLOBAL MODEL LOADER (Singleton Pattern)
+# ---------------------------------------------------------
+recommender_engine = None
+
+def get_recommender():
+    """
+    Loads the trained machine learning model only once when needed.
+    """
+    global recommender_engine
+    if recommender_engine is None:
+        # Adjust path to match your project structure
+        model_path = os.path.join(settings.BASE_DIR, 'api/ml_models/career_recommender.pkl')
+        try:
+            if os.path.exists(model_path):
+                print(f"📂 Loading pre-trained model from {model_path}...")
+                recommender_engine = CareerRecommender.load_model(model_path)
+                print("✅ Model loaded successfully.")
+            else:
+                print("⚠️ Model file not found. Training new model (fallback)...")
+                recommender_engine = CareerRecommender()
+                recommender_engine.train()
+                # Optional: save it
+                # recommender_engine.save_model(model_path)
+                print("✅ New model trained.")
+        except Exception as e:
+            print(f"❌ Error loading recommender: {e}")
+            # Fallback
+            recommender_engine = CareerRecommender()
+            recommender_engine.train()
+            
+    return recommender_engine
+
+
+# ---------------------------------------------------------
+# AUTH VIEWS
+# ---------------------------------------------------------
 
 class RegisterUserView(CreateAPIView):
     serializer_class = RegisterUserSerializer
@@ -58,7 +97,29 @@ class ProfileUpdateView(UpdateAPIView):
         return self.request.user
 
 
-# Assessment Views
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get the logged-in user's profile"""
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        serializer = ProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        """Update the logged-in user's profile"""
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ---------------------------------------------------------
+# ASSESSMENT & PREDICTION VIEWS
+# ---------------------------------------------------------
+
 class AssessmentView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -78,10 +139,8 @@ class AssessmentView(APIView):
         """Create or update user's assessment"""
         try:
             assessment = Assessment.objects.get(user=request.user)
-            # Update existing assessment
             serializer = AssessmentCreateUpdateSerializer(assessment, data=request.data, partial=True)
         except Assessment.DoesNotExist:
-            # Create new assessment
             serializer = AssessmentCreateUpdateSerializer(data=request.data)
         
         if serializer.is_valid():
@@ -92,139 +151,112 @@ class AssessmentView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# This can be removed if you strictly use the functional view 'predict_career'
+# or kept as an alternative. I'm renaming it to avoid import confusion if both exist.
 class AssessmentPredictView(APIView):
     permission_classes = [IsAuthenticated]
-
     def post(self, request):
-        """Generate top 5 career recommendations using trained SVD model."""
-        try:
-            assessment = Assessment.objects.get(user=request.user)
-        except Assessment.DoesNotExist:
-            return Response({"error": "No assessment found for this user."}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            # ✅ Load model + dataset
-            # Model is in backend root, CSV is in api/ml_models/
-            model_path = os.path.join(settings.BASE_DIR, "career_recommender.pkl")
-            data_path = os.path.join(settings.BASE_DIR, "api", "ml_models", "career_path_in_all_field.csv")
-
-            # Check if files exist
-            if not os.path.exists(model_path):
-                return Response(
-                    {"error": f"Model file not found at {model_path}"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            if not os.path.exists(data_path):
-                return Response(
-                    {"error": f"Data file not found at {data_path}"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-            model = joblib.load(model_path)
-            df = pd.read_csv(data_path)
-
-            # Each student_id in the dataset corresponds to one student
-            # We'll use user.id (or a synthetic ID if not found)
-            student_id = request.user.pk
-
-            # Predict top 5 careers for the user
-            all_careers = df["Career"].unique()
-            career_scores = []
-            for career in all_careers:
-                try:
-                    pred = model.predict(student_id, career)
-                    career_scores.append({
-                        "career": career,
-                        "score": round(pred.est, 3)
-                    })
-                except Exception as e:
-                    # If prediction fails for a specific career, skip it
-                    continue
-
-            if not career_scores:
-                return Response(
-                    {"error": "Could not generate predictions. Please check the model and data."}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-            top_careers = sorted(career_scores, key=lambda x: x["score"], reverse=True)[:5]
-
-            # ✅ Save best recommendation in DB
-            best_career = top_careers[0]["career"]
-            assessment.recommended_career = best_career
-            assessment.save()
-
-            # Include recommendations in response
-            return Response({
-                "recommended_career": best_career,
-                "recommendations": top_careers
-            }, status=status.HTTP_200_OK)
-
-        except FileNotFoundError as e:
-            return Response(
-                {"error": f"Required file not found: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        except Exception as e:
-            return Response(
-                {"error": f"Error generating predictions: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return predict_career(request) # Proxy to the function
 
 
-# Job Views
-class JobPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def predict_career(request):
+    """
+    Generates career recommendations using the new ML Recommender Engine.
+    It aggregates user Assessment data + Experiences into a format the model understands.
+    """
+    user = request.user
 
+    # 1. Fetch Latest Assessment
+    try:
+        assessment = Assessment.objects.get(user=user)
+    except Assessment.DoesNotExist:
+        return Response({"error": "No assessment found. Please complete the form first."}, status=404)
 
-class JobListView(ListAPIView):
-    """List all jobs (paginated) - no authentication required"""
-    serializer_class = JobListSerializer
-    permission_classes = [AllowAny]
-    pagination_class = JobPagination
+    # 2. Fetch and Aggregate Experiences
+    experiences = Experience.objects.filter(assessment=assessment)
     
-    def get_queryset(self):
-        queryset = Job.objects.filter(is_active=True)
-        
-        # Add filtering options
-        work_type = self.request.query_params.get('work_type', None)
-        industry = self.request.query_params.get('industry', None)
-        location = self.request.query_params.get('location', None)
-        min_salary = self.request.query_params.get('min_salary', None)
-        max_salary = self.request.query_params.get('max_salary', None)
-        
-        if work_type:
-            queryset = queryset.filter(work_type=work_type)
-        if industry:
-            queryset = queryset.filter(industry__icontains=industry)
-        if location:
-            queryset = queryset.filter(location__icontains=location)
-        if min_salary:
-            queryset = queryset.filter(med_salary__gte=min_salary)
-        if max_salary:
-            queryset = queryset.filter(med_salary__lte=max_salary)
+    exp_counts = {
+        "Extracurricular_Activities": 0,
+        "Internships": 0,
+        "Projects": 0,
+        "Leadership_Positions": 0,
+        "Research_Experience": 0,
+    }
+    
+    for exp in experiences:
+        t = exp.type 
+        if t == "Extracurricular": exp_counts["Extracurricular_Activities"] += 1
+        elif t == "Internship": exp_counts["Internships"] += 1
+        elif t == "Project": exp_counts["Projects"] += 1
+        elif t == "Leadership": exp_counts["Leadership_Positions"] += 1
+        elif t == "Research": exp_counts["Research_Experience"] += 1
+
+    # 3. Prepare Input Vector
+    try:
+        input_data = {
+            'Field': assessment.other_field if assessment.field == 'Other' else assessment.field,
+            'GPA': float(assessment.gpa),
             
-        return queryset
+            # Skills Mapping (x2 for scaling 1-5 to 0-10)
+            'Coding_Skills': assessment.coding_skills * 2,
+            'Communication_Skills': assessment.communication_skills * 2,
+            'Problem_Solving_Skills': assessment.problem_solving_skills * 2,
+            'Teamwork_Skills': assessment.teamwork_skills * 2,
+            'Analytical_Skills': assessment.analytical_skills * 2,
+            'Presentation_Skills': assessment.presentation_skills * 2,
+            'Networking_Skills': assessment.networking_skills * 2,
+            'Industry_Certifications': assessment.industry_certifications * 2,
+            
+            # Experience Counts
+            **exp_counts,
+            
+            # Heuristic: Field courses boosted by internships
+            'Field_Specific_Courses': 5 + (2 if exp_counts['Internships'] > 0 else 0)
+        }
+
+        # 4. Run Prediction
+        engine = get_recommender()
+        recommendations = engine.predict(input_data)
+        
+        if not recommendations:
+             return Response({"error": "No recommendations could be generated."}, status=500)
+
+        # 5. Save Best Match
+        best_career = recommendations[0]['career']
+        assessment.recommended_career = best_career
+        assessment.save()
+
+        # 6. Format Response for Frontend
+        formatted_recs = []
+        for rec in recommendations:
+            formatted_recs.append({
+                "career": rec['career'],
+                "score": rec['score'], 
+                "match_score": rec['match_rate'],
+                "salary": "$60k - $120k", 
+                "growth": "High",
+                "location": "Hybrid"
+            })
+
+        return Response({
+            "recommended_career": best_career,
+            "recommendations": formatted_recs
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Prediction Error: {e}")
+        return Response({"error": f"Prediction failed: {str(e)}"}, status=500)
 
 
-class JobDetailView(RetrieveAPIView):
-    """Get job details by ID - no authentication required"""
-    serializer_class = JobSerializer
-    permission_classes = [AllowAny]
-    lookup_field = 'id'
-    
-    def get_queryset(self):
-        return Job.objects.filter(is_active=True)
+# ---------------------------------------------------------
+# EXPERIENCE MANAGEMENT VIEWS
+# ---------------------------------------------------------
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def experiences_view(request):
-    """
-    GET  /api/assessment/experience/      → list all experiences for the logged-in user
-    POST /api/assessment/experience/      → create a new experience for the logged-in user
-    """
     try:
         assessment = Assessment.objects.get(user=request.user)
     except Assessment.DoesNotExist:
@@ -268,27 +300,51 @@ def delete_experience(request, experience_id):
     
     experience.delete()
     return Response({"message": "Experience deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-    experiences = assessment.experiences.all()
-    serializer = ExperienceSerializer(experiences, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
 
-class ProfileView(APIView):
-    permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        """Get the logged-in user's profile"""
-        profile, _ = Profile.objects.get_or_create(user=request.user)
-        serializer = ProfileSerializer(profile)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+# ---------------------------------------------------------
+# JOB & INTERNSHIP VIEWS
+# ---------------------------------------------------------
 
-    def put(self, request):
-        """Update the logged-in user's profile"""
-        profile, _ = Profile.objects.get_or_create(user=request.user)
-        serializer = ProfileSerializer(profile, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class JobPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class JobListView(ListAPIView):
+    """List all jobs (paginated) - no authentication required"""
+    serializer_class = JobListSerializer
+    permission_classes = [AllowAny]
+    pagination_class = JobPagination
+    
+    def get_queryset(self):
+        queryset = Job.objects.filter(is_active=True)
+        
+        work_type = self.request.query_params.get('work_type', None)
+        industry = self.request.query_params.get('industry', None)
+        location = self.request.query_params.get('location', None)
+        min_salary = self.request.query_params.get('min_salary', None)
+        max_salary = self.request.query_params.get('max_salary', None)
+        
+        if work_type: queryset = queryset.filter(work_type=work_type)
+        if industry: queryset = queryset.filter(industry__icontains=industry)
+        if location: queryset = queryset.filter(location__icontains=location)
+        if min_salary: queryset = queryset.filter(med_salary__gte=min_salary)
+        if max_salary: queryset = queryset.filter(med_salary__lte=max_salary)
+            
+        return queryset
+
+
+class JobDetailView(RetrieveAPIView):
+    """Get job details by ID - no authentication required"""
+    serializer_class = JobSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'id'
+    
+    def get_queryset(self):
+        return Job.objects.filter(is_active=True)
+
 
 class RecommendedInternshipListView(generics.ListAPIView):
     """
@@ -300,17 +356,13 @@ class RecommendedInternshipListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        
-        # Base queryset: only active internships
         queryset = Job.objects.filter(work_type='Internship', is_active=True)
 
         try:
-            # Get the user's top recommended career (as a string)
             assessment = Assessment.objects.get(user=user)
-            recommended_career_industry = assessment.field # We use their assessed 'field'
+            recommended_career_industry = assessment.field 
             
             if recommended_career_industry:
-                # Annotate: 1 for recommended, 2 for others
                 queryset = queryset.annotate(
                     recommend_score=Case(
                         When(industry__icontains=recommended_career_industry, then=Value(1)),
@@ -318,16 +370,9 @@ class RecommendedInternshipListView(generics.ListAPIView):
                         output_field=IntegerField()
                     )
                 )
-                # Order by score (1s first), then by creation date
                 return queryset.order_by('recommend_score', '-created_at')
 
         except Assessment.DoesNotExist:
-            # If no assessment, just return by date
             pass
 
         return queryset.order_by('-created_at')
-
-
-
-
-
