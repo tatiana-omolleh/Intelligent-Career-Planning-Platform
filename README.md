@@ -45,7 +45,7 @@ Traditional career advice is often generic or outdated. **Kazìni** changes this
 
 ### **1. Clone the Repository**
 ```bash
-git clone https://github.com/YourUsername/Kazini.git
+git clone https://github.com/tatiana-omolleh/Intelligent-Career-Planning-Platform
 cd Kazini 
 ```
 
